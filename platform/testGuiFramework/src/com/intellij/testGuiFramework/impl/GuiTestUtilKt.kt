@@ -16,7 +16,9 @@
 package com.intellij.testGuiFramework.impl
 
 import com.intellij.openapi.util.Ref
+import com.intellij.testGuiFramework.framework.GuiTestUtil
 import org.fest.swing.core.ComponentMatcher
+import org.fest.swing.core.GenericTypeMatcher
 import org.fest.swing.core.Robot
 import org.fest.swing.edt.GuiActionRunner
 import org.fest.swing.edt.GuiQuery
@@ -111,19 +113,6 @@ object GuiTestUtilKt {
     fun printRecursive(root: ImmutableTreeNode<Value>, indent: Int) {
       println(" " * indent + root.value)
       if (!root.isLeaf()) root.children.forEach { printRecursive(it, indent + 2) }
-    }
-
-//    fun getLeafs(): List<ImmutableTreeNode<Value>> {
-//
-//    }
-
-    fun deepFirstSearch(consumer: (ImmutableTreeNode<Value>) -> Unit) {
-      val stack = ArrayList<ImmutableTreeNode<Value>>()
-      assert(root != null)
-      stack.add(root!!)
-      while (stack.isNotEmpty()) {
-        val v = stack[stack.lastIndex]
-      }
     }
 
   }
@@ -224,7 +213,7 @@ object GuiTestUtilKt {
     }, Timeout.timeout(timeoutInSeconds.toLong(), TimeUnit.SECONDS))
   }
 
-  fun <ComponentType : Component> findAllWithDFS(container: Container, clazz: Class<ComponentType>): List<ComponentType> {
+  fun <ComponentType : Component> findAllWithBFS(container: Container, clazz: Class<ComponentType>): List<ComponentType> {
     val result = LinkedList<ComponentType>()
     val queue: Queue<Component> = LinkedList()
 
@@ -245,6 +234,17 @@ object GuiTestUtilKt {
 
   }
 
+  fun <ComponentType : Component?> waitUntilGone(robot: Robot, timeoutInSeconds: Int = 30, root: Container? = null, matcher: GenericTypeMatcher<ComponentType>) {
+    return GuiTestUtil.waitUntilGone(robot, root, timeoutInSeconds, matcher)
+  }
+
+  fun <ComponentType : Component?> typeMatcher(componentTypeClass: Class<ComponentType>,
+                                                       matcher: (ComponentType) -> Boolean): GenericTypeMatcher<ComponentType> {
+    return object : GenericTypeMatcher<ComponentType>(componentTypeClass) {
+      override fun isMatching(component: ComponentType): Boolean = matcher(component)
+    }
+  }
+
 
   fun <ReturnType> computeOnEdt(query: () -> ReturnType): ReturnType?
     = GuiActionRunner.execute(object : GuiQuery<ReturnType>() {
@@ -262,8 +262,8 @@ object GuiTestUtilKt {
         }
       }
     })
-    if (result?.second != null) throw result!!.second!!
-    return result!!.first
+    if (result?.second != null) throw result.second!!
+    return result?.first
   }
 
 }

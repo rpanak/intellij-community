@@ -44,7 +44,9 @@ public abstract class AbstractToolBeforeRunTaskProvider<T extends AbstractToolBe
     }
     boolean isModified = dialog.isModified();
     Tool selectedTool = dialog.getSelectedTool();
-    LOG.assertTrue(selectedTool != null);
+    if (selectedTool == null) {
+      return true;
+    }
     String selectedToolId = selectedTool.getActionId();
     String oldToolId = task.getToolActionId();
     if (oldToolId != null && oldToolId.equals(selectedToolId)) {
@@ -74,7 +76,7 @@ public abstract class AbstractToolBeforeRunTaskProvider<T extends AbstractToolBe
     }
     String groupName = tool.getGroup();
     return ToolsBundle
-      .message("tools.before.run.description", StringUtil.isEmpty(groupName) ? tool.getName() : groupName + "/" + tool.getName());
+      .message("tools.before.run.description", StringUtil.isEmpty(groupName) ? tool.getName() : groupName + "/" + tool.getName()) + (!tool.isEnabled() ? " (disabled)" : "");
   }
 
   @Override

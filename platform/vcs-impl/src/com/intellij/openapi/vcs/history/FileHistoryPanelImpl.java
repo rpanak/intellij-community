@@ -52,9 +52,9 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.ui.*;
 import com.intellij.ui.content.ContentManager;
-import com.intellij.ui.dualView.CellWrapper;
 import com.intellij.ui.dualView.DualView;
 import com.intellij.ui.dualView.DualViewColumnInfo;
+import com.intellij.ui.dualView.TableCellRendererWrapper;
 import com.intellij.ui.dualView.TreeTableView;
 import com.intellij.ui.speedSearch.SpeedSearchUtil;
 import com.intellij.ui.table.TableView;
@@ -346,8 +346,6 @@ public class FileHistoryPanelImpl extends PanelWithActionsAndCloseButton impleme
     myDualView.expandAll();
 
     myDualView.setTreeCellRenderer(new MyTreeCellRenderer(myDualView.getTree().getCellRenderer(), () -> myHistorySession));
-    myDualView.setCellWrapper(new MyCellWrapper(() -> myHistorySession));
-
     myDualView.installDoubleClickHandler(new MyDiffAction());
 
     myDualView.getFlatView().getTableViewModel().setSortable(true);
@@ -657,6 +655,53 @@ public class FileHistoryPanelImpl extends PanelWithActionsAndCloseButton impleme
     protected DualView getDualView() {
       return myDualView;
     }
+
+    @Override
+    public TableCellRenderer getCustomizedRenderer(@NotNull TreeNodeOnVcsRevision revision, @NotNull TableCellRenderer renderer) {
+      if (renderer instanceof BaseHistoryCellRenderer) {
+        ((BaseHistoryCellRenderer)renderer).setCurrentRevision(isCurrentRevision(revision));
+      } else {
+        // for custom columns from individual vcs-es
+        return new TableCellRendererWrapper() {
+          @NotNull
+          @Override
+          public TableCellRenderer getBaseRenderer() {
+            return renderer;
+          }
+
+          @Override
+          public Component getTableCellRendererComponent(JTable table,
+                                                         Object value,
+                                                         boolean isSelected,
+                                                         boolean hasFocus,
+                                                         int row,
+                                                         int column) {
+            Component component = renderer.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+            if (isCurrentRevision(revision)) {
+              makeBold(component);
+            }
+            return component;
+          }
+        };
+      }
+      return renderer;
+    }
+
+    private boolean isCurrentRevision(@NotNull TreeNodeOnVcsRevision revision) {
+      return myHistorySession.isCurrentRevision(revision.getRevision().getRevisionNumber());
+    }
+  }
+
+  private abstract static class BaseHistoryCellRenderer extends ColoredTableCellRenderer {
+    private boolean myIsCurrentRevision = false;
+
+    protected SimpleTextAttributes getDefaultAttributes() {
+      return myIsCurrentRevision ? SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES : SimpleTextAttributes.REGULAR_ATTRIBUTES;
+    }
+
+    public void setCurrentRevision(boolean currentRevision) {
+      myIsCurrentRevision = currentRevision;
+    }
   }
 
   public static class RevisionColumnInfo extends ColumnInfo<VcsFileRevision, VcsRevisionNumber> {
@@ -666,10 +711,10 @@ public class FileHistoryPanelImpl extends PanelWithActionsAndCloseButton impleme
     public RevisionColumnInfo(@Nullable Comparator<VcsFileRevision> comparator) {
       super(VcsBundle.message("column.name.revision.version"));
       myComparator = comparator;
-      myRenderer = new ColoredTableCellRenderer() {
+      myRenderer = new BaseHistoryCellRenderer() {
         protected void customizeCellRenderer(JTable table, Object value, boolean selected, boolean hasFocus, int row, int column) {
           setOpaque(selected);
-          append(VcsUtil.getShortRevisionString((VcsRevisionNumber)value));
+          append(VcsUtil.getShortRevisionString((VcsRevisionNumber)value), getDefaultAttributes());
           SpeedSearchUtil.applySpeedSearchHighlighting(table, this, false, selected);
         }
       };
@@ -705,12 +750,12 @@ public class FileHistoryPanelImpl extends PanelWithActionsAndCloseButton impleme
     public DateColumnInfo() {
       super(VcsBundle.message("column.name.revision.date"));
 
-      myRenderer = new ColoredTableCellRenderer() {
+      myRenderer = new BaseHistoryCellRenderer() {
         protected void customizeCellRenderer(JTable table, Object value, boolean selected, boolean hasFocus, int row, int column) {
           setOpaque(selected);
           Date date = (Date)value;
           if (date != null) {
-            append(DateFormatUtil.formatPrettyDateTime(date));
+            append(DateFormatUtil.formatPrettyDateTime(date), getDefaultAttributes());
           }
           SpeedSearchUtil.applySpeedSearchHighlighting(table, this, false, selected);
         }
@@ -741,7 +786,7 @@ public class FileHistoryPanelImpl extends PanelWithActionsAndCloseButton impleme
     }
   }
 
-  private static class AuthorCellRenderer extends ColoredTableCellRenderer {
+  private static class AuthorCellRenderer extends BaseHistoryCellRenderer {
     private String myTooltipText;
 
     /**
@@ -762,7 +807,7 @@ public class FileHistoryPanelImpl extends PanelWithActionsAndCloseButton impleme
         setBackground(table.getBackground());
         setForeground(table.getForeground());
       }
-      if (value != null) append(value.toString());
+      if (value != null) append(value.toString(), getDefaultAttributes());
       SpeedSearchUtil.applySpeedSearchHighlighting(table, this, false, selected);
     }
   }
@@ -822,12 +867,12 @@ public class FileHistoryPanelImpl extends PanelWithActionsAndCloseButton impleme
 
     public MessageColumnInfo(Project project) {
       super(COMMIT_MESSAGE_TITLE);
-      myRenderer = new ColoredTableCellRenderer() {
+      myRenderer = new BaseHistoryCellRenderer() {
         protected void customizeCellRenderer(JTable table, Object value, boolean selected, boolean hasFocus, int row, int column) {
           setOpaque(selected);
           if (value instanceof String) {
             String message = (String)value;
-            myIssueLinkRenderer.appendTextWithLinks(message);
+            myIssueLinkRenderer.appendTextWithLinks(message, getDefaultAttributes());
             SpeedSearchUtil.applySpeedSearchHighlighting(table, this, false, selected);
           }
         }
@@ -943,28 +988,6 @@ public class FileHistoryPanelImpl extends PanelWithActionsAndCloseButton impleme
       }
 
       return result;
-    }
-  }
-
-  private static class MyCellWrapper implements CellWrapper {
-    private final Getter<VcsHistorySession> myHistorySession;
-
-    public MyCellWrapper(final Getter<VcsHistorySession> historySession) {
-      myHistorySession = historySession;
-    }
-
-    public void wrap(Component component,
-                     JTable table,
-                     Object value,
-                     boolean isSelected,
-                     boolean hasFocus,
-                     int row,
-                     int column,
-                     Object treeNode) {
-      VcsFileRevision revision = ((TreeNodeOnVcsRevision)treeNode).getRevision();
-      if (myHistorySession.get().isCurrentRevision(revision.getRevisionNumber())) {
-        makeBold(component);
-      }
     }
   }
 

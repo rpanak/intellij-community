@@ -46,6 +46,7 @@ import com.intellij.openapi.project.ex.ProjectManagerEx;
 import com.intellij.openapi.project.impl.ProjectImpl;
 import com.intellij.openapi.project.impl.ProjectManagerImpl;
 import com.intellij.openapi.project.impl.TooManyProjectLeakedException;
+import com.intellij.openapi.projectRoots.ProjectJdkTable;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.roots.ModuleRootModificationUtil;
 import com.intellij.openapi.startup.StartupManager;
@@ -123,6 +124,7 @@ public abstract class PlatformTestCase extends UsefulTestCase implements DataPro
 
   private static boolean ourPlatformPrefixInitialized;
   private static Set<VirtualFile> ourEternallyLivingFilesCache;
+  private Sdk[] myOldSdks;
 
   /**
    * If a temp directory is reused from some previous test run, there might be cached children in its VFS.
@@ -141,11 +143,17 @@ public abstract class PlatformTestCase extends UsefulTestCase implements DataPro
     if (firstTime) {
       cleanPersistedVFSContent();
     }
+    // try to remember old sdks as soon as possible after the app instantiation
+    myOldSdks = ProjectJdkTable.getInstance().getAllJdks();
   }
 
   private static final String[] PREFIX_CANDIDATES = {
-    "AppCode", "CLion", "CidrCommon", "Rider",
-    "Python", "PyCharmCore", "Ruby", "UltimateLangXml", "Idea", "PlatformLangXml" };
+    "AppCode", "CLion", "CidrCommon",
+    "DataGrip",
+    "Python", "PyCharmCore",
+    "Ruby",
+    "Rider",
+    "UltimateLangXml", "Idea", "PlatformLangXml" };
 
   /**
    * @deprecated calling this method is no longer necessary
@@ -197,6 +205,9 @@ public abstract class PlatformTestCase extends UsefulTestCase implements DataPro
     LOG.debug(getClass().getName() + ".setUp()");
 
     initApplication();
+    if (myOldSdks == null) { // some bastard's overridden initApplication completely
+      myOldSdks = ProjectJdkTable.getInstance().getAllJdks();
+    }
 
     myEditorListenerTracker = new EditorListenerTracker();
     myThreadTracker = new ThreadTracker();
@@ -506,6 +517,7 @@ public abstract class PlatformTestCase extends UsefulTestCase implements DataPro
         }
       })
       .append(LightPlatformTestCase::checkEditorsReleased)
+      .append(() -> UsefulTestCase.checkForJdkTableLeaks(myOldSdks))
       .append(() -> {
         myProjectManager = null;
         myProject = null;
